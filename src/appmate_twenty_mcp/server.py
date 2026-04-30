@@ -52,7 +52,7 @@ def create_server() -> FastMCP:
     register_task_tools(mcp, client)
     register_opportunity_tools(mcp, client)
 
-    logger.info("Registered %d tools", len(mcp._tools))
+    logger.info("Bridge ready with tools: companies, people, tasks, opportunities")
     return mcp
 
 
