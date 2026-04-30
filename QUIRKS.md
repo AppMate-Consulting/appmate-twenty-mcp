@@ -2,7 +2,9 @@
 
 This document is the handover artefact for installing `appmate-twenty-mcp` on a self-hosted Twenty instance. It explains why this bridge exists instead of using the community `jezweb/twenty-mcp` server, and what edge cases are handled automatically.
 
-> **Origin:** Every workaround below was discovered the hard way — through production failures against Brad Legassick's self-hosted Twenty instance at `crm.appmate.com.au` (Cloudflare-protected, JWT workspace keys, custom objects).
+> Origin: Every workaround below was discovered through production failures against 
+> a self-hosted Twenty instance behind Cloudflare with JWT workspace keys and 
+> custom objects.
 
 ---
 
