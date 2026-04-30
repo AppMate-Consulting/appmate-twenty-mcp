@@ -74,25 +74,30 @@ def register_company_tools(mcp: FastMCP, client: TwentyClient) -> None:
             company_id: Twenty UUID of the company.
         """
         query = """
-        query GetCompany($id: ID!) {
-          company(id: $id) {
-            id
-            name
-            domainName
-            businessUnit
-            address
-            employees
-            annualRecurringRevenue
-            idealCustomerProfile
-            createdAt
-            updatedAt
-            companyGroup { id name }
-            people { edges { node { id name { firstName lastName } emails } } }
+        query GetCompany($id: UUID!) {
+          companies(filter: { id: { eq: $id } }, first: 1) {
+            edges {
+              node {
+                id
+                name
+                domainName
+                businessUnit
+                address
+                employees
+                annualRecurringRevenue
+                idealCustomerProfile
+                createdAt
+                updatedAt
+                companyGroup { id name }
+                people { edges { node { id name { firstName lastName } emails } } }
+              }
+            }
           }
         }
         """
         data = client.graphql(query, {"id": company_id})
-        return data.get("company", {})
+        edges = data.get("companies", {}).get("edges", [])
+        return edges[0]["node"] if edges else {}
 
     @mcp.tool()
     def create_company(
