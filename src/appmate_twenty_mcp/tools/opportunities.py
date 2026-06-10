@@ -85,19 +85,24 @@ def register_opportunity_tools(mcp: FastMCP, client: TwentyClient) -> None:
         point_of_contact_id: str | None = None,
         close_date: str | None = None,
         probability: int | None = None,
+        extra_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a new pipeline opportunity.
 
         Args:
             name: Opportunity name.
-            stage: Pipeline stage (e.g. "NEW", "MEETING", "PROPOSAL", "WON", "LOST").
+            stage: Pipeline stage (use list_pipeline_stages to discover values).
             amount: Dollar amount (converted to micros internally).
             company_id: UUID of linked company.
             point_of_contact_id: UUID of linked person.
             close_date: Expected close date (ISO8601).
             probability: 0-100 chance of closing.
+            extra_fields: Workspace custom fields → values, passed through verbatim,
+                e.g. {"assessmentScore": 84, "riskLevel": "MODERATE",
+                "assessmentBrief": {"markdown": "..."}} (RICH_TEXT takes {"markdown"}).
         """
         data_input: dict[str, Any] = {"name": name, "stage": stage}
+        data_input.update(extra_fields or {})
         if amount is not None:
             data_input["amount"] = int(amount * 1_000_000)
         if company_id is not None:
@@ -127,6 +132,7 @@ def register_opportunity_tools(mcp: FastMCP, client: TwentyClient) -> None:
         point_of_contact_id: str | None = None,
         close_date: str | None = None,
         probability: int | None = None,
+        extra_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Update an existing opportunity by UUID.
 
@@ -139,8 +145,11 @@ def register_opportunity_tools(mcp: FastMCP, client: TwentyClient) -> None:
             point_of_contact_id: UUID of linked person.
             close_date: Expected close date (ISO8601).
             probability: 0-100 chance of closing.
+            extra_fields: Workspace custom fields → values, passed through verbatim
+                (RICH_TEXT fields take {"markdown": "..."}).
         """
         data_input: dict[str, Any] = {}
+        data_input.update(extra_fields or {})
         if name is not None:
             data_input["name"] = name
         if stage is not None:
