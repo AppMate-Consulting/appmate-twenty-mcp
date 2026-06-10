@@ -1,4 +1,10 @@
-"""Note tools for Twenty MCP — lead briefs and summaries attached to CRM records."""
+"""Note tools for Twenty MCP — lead briefs and summaries attached to CRM records.
+
+Target relations (company/person/opportunity/custom objects) vary per workspace —
+relations can be deactivated or replaced with custom objects in the Data Model.
+These tools introspect NoteTargetCreateInput at call time and report unsupported
+targets as warnings instead of failing the whole operation. See QUIRKS.md #14.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +13,8 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from appmate_twenty_mcp.client import TwentyClient
+
+STANDARD_TARGET_FIELDS = ("companyId", "personId", "opportunityId")
 
 
 def register_note_tools(mcp: FastMCP, client: TwentyClient) -> None:
@@ -19,15 +27,20 @@ def register_note_tools(mcp: FastMCP, client: TwentyClient) -> None:
         company_id: str | None = None,
         person_id: str | None = None,
         opportunity_id: str | None = None,
+        extra_targets: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Create a note, optionally attached to a company, person, and/or opportunity.
+        """Create a note, optionally attached to CRM records via noteTargets.
 
         Args:
             title: Note title shown in Twenty list views.
             body: Markdown body (rendered via bodyV2 RICH_TEXT).
-            company_id: UUID of company to attach via noteTarget.
-            person_id: UUID of person to attach via noteTarget.
-            opportunity_id: UUID of opportunity to attach via noteTarget.
+            company_id: UUID of company to attach (if workspace supports it).
+            person_id: UUID of person to attach (if workspace supports it).
+            opportunity_id: UUID of opportunity to attach (if workspace supports it).
+            extra_targets: Workspace-specific noteTarget input fields → UUID,
+                e.g. {"targetProjectId": "..."} — call get_note_target_fields to discover.
+
+        Unsupported targets are skipped and reported in the returned "warnings" list.
         """
         data_input: dict[str, Any] = {"title": title}
         if body is not None:
@@ -42,32 +55,58 @@ def register_note_tools(mcp: FastMCP, client: TwentyClient) -> None:
         note = result.get("createNote", {})
         note_id = note.get("id")
 
-        targets: list[dict[str, Any]] = []
-        if note_id and company_id:
-            targets.append(_link_note(client, note_id, "companyId", company_id))
-        if note_id and person_id:
-            targets.append(_link_note(client, note_id, "personId", person_id))
-        if note_id and opportunity_id:
-            targets.append(_link_note(client, note_id, "opportunityId", opportunity_id))
-        if targets:
-            note["noteTargets"] = targets
+        requested: dict[str, str] = {}
+        standard = (company_id, person_id, opportunity_id)
+        for field, value in zip(STANDARD_TARGET_FIELDS, standard, strict=True):
+            if value:
+                requested[field] = value
+        requested.update(extra_targets or {})
+
+        if note_id and requested:
+            available = client.input_fields("NoteTargetCreateInput")
+            warnings: list[str] = []
+            targets: list[dict[str, Any]] = []
+            for field, target_id in requested.items():
+                if field not in available:
+                    other = sorted(f for f in available if f.endswith("Id") and f != "noteId")
+                    warnings.append(
+                        f"noteTarget field '{field}' is not available in this workspace; "
+                        f"available targets: {other}"
+                    )
+                    continue
+                targets.append(_link_note(client, note_id, field, target_id))
+            if targets:
+                note["noteTargets"] = targets
+            if warnings:
+                note["warnings"] = warnings
 
         return note
 
     @mcp.tool()
     def list_notes(
-        company_id: str | None = None,
-        person_id: str | None = None,
+        target_field: str | None = None,
+        target_id: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """List recent notes, optionally filtered by linked company or person.
+        """List recent notes, optionally filtered by a linked record.
 
         Args:
-            company_id: Only notes attached to this company UUID.
-            person_id: Only notes attached to this person UUID.
+            target_field: NoteTarget id field to filter on, e.g. "companyId" or
+                "targetProjectId" — call get_note_target_fields to discover.
+            target_id: UUID the target_field must equal.
             limit: Max results (default 20, max 100).
         """
         limit = min(limit, 100)
+        target_fields = sorted(
+            f for f in client.object_fields("NoteTarget") if f.endswith("Id") and f != "noteId"
+        )
+        if target_field and target_field not in target_fields:
+            raise ValueError(
+                f"noteTarget field '{target_field}' does not exist in this workspace; "
+                f"available: {target_fields}"
+            )
+
+        target_selection = "\n".join(target_fields)
         query = f"""
         query ListNotes {{
           notes(first: {limit}, orderBy: {{ createdAt: DescNullsLast }}) {{
@@ -81,9 +120,7 @@ def register_note_tools(mcp: FastMCP, client: TwentyClient) -> None:
                   edges {{
                     node {{
                       id
-                      companyId
-                      personId
-                      opportunityId
+                      {target_selection}
                     }}
                   }}
                 }}
@@ -96,18 +133,26 @@ def register_note_tools(mcp: FastMCP, client: TwentyClient) -> None:
         edges = data.get("notes", {}).get("edges", [])
         results = [e["node"] for e in edges]
 
-        def _targets(note: dict[str, Any]) -> list[dict[str, Any]]:
-            return [t["node"] for t in note.get("noteTargets", {}).get("edges", [])]
-
-        if company_id:
+        if target_field and target_id:
             results = [
-                n for n in results if any(t.get("companyId") == company_id for t in _targets(n))
-            ]
-        if person_id:
-            results = [
-                n for n in results if any(t.get("personId") == person_id for t in _targets(n))
+                n
+                for n in results
+                if any(
+                    t["node"].get(target_field) == target_id
+                    for t in n.get("noteTargets", {}).get("edges", [])
+                )
             ]
         return results
+
+    @mcp.tool()
+    def get_note_target_fields() -> dict[str, list[str]]:
+        """Discover which record types notes can attach to in this workspace."""
+        create_fields = sorted(
+            f
+            for f in client.input_fields("NoteTargetCreateInput")
+            if f.endswith("Id") and f not in ("id", "noteId")
+        )
+        return {"note_target_id_fields": create_fields}
 
 
 def _link_note(

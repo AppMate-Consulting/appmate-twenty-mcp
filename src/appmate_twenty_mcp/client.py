@@ -57,6 +57,14 @@ class TwentyClient:
             ).decode(),
         }
 
+        # Cloudflare Access service token — required when the instance sits behind
+        # an Access application (otherwise requests 302 to the Access login page).
+        cf_client_id = (os.environ.get("CF_ACCESS_CLIENT_ID") or "").strip()
+        cf_client_secret = (os.environ.get("CF_ACCESS_CLIENT_SECRET") or "").strip()
+        if cf_client_id and cf_client_secret:
+            self._headers["CF-Access-Client-Id"] = cf_client_id
+            self._headers["CF-Access-Client-Secret"] = cf_client_secret
+
         self._client = httpx.Client(
             base_url=self.base_url,
             headers=self._headers,
@@ -66,6 +74,11 @@ class TwentyClient:
         # Rate limit: 100 req/min
         self._last_request_time: float = 0.0
         self._min_interval: float = 60.0 / 100.0
+
+        # Introspection caches — workspaces customize the data model (relations can
+        # be deactivated entirely), so queries/mutations must adapt at runtime.
+        self._type_fields_cache: dict[str, set[str]] = {}
+        self._input_fields_cache: dict[str, set[str]] = {}
 
     def _extract_workspace_id(self, api_key: str) -> str:
         """Decode JWT payload to get workspaceId."""
@@ -141,6 +154,19 @@ class TwentyClient:
         self._handle_http_error(resp)
 
     def _handle_http_error(self, resp: httpx.Response) -> None:
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("location", "")
+            if "cloudflareaccess.com/cdn-cgi/access/login" in location:
+                raise TwentyError(
+                    "Blocked by Cloudflare Access — set CF_ACCESS_CLIENT_ID and "
+                    "CF_ACCESS_CLIENT_SECRET to a service token authorized for this "
+                    "Access application.",
+                    status=resp.status_code,
+                )
+            raise TwentyError(
+                f"Unexpected redirect to {location[:120]} — check TWENTY_BASE_URL",
+                status=resp.status_code,
+            )
         if resp.status_code >= 400:
             try:
                 body = resp.json()
@@ -151,6 +177,34 @@ class TwentyClient:
                 status=resp.status_code,
                 response=body,
             )
+
+    # ── Schema introspection ─────────────────────────────────────────────────
+
+    def object_fields(self, type_name: str) -> set[str]:
+        """Field names available on a GraphQL object type (cached)."""
+        if type_name not in self._type_fields_cache:
+            data = self.graphql(
+                "query($n: String!) { __type(name: $n) { fields { name } } }",
+                {"n": type_name},
+            )
+            type_info = data.get("__type") or {}
+            self._type_fields_cache[type_name] = {
+                f["name"] for f in type_info.get("fields") or []
+            }
+        return self._type_fields_cache[type_name]
+
+    def input_fields(self, type_name: str) -> set[str]:
+        """Field names accepted by a GraphQL input type (cached)."""
+        if type_name not in self._input_fields_cache:
+            data = self.graphql(
+                "query($n: String!) { __type(name: $n) { inputFields { name } } }",
+                {"n": type_name},
+            )
+            type_info = data.get("__type") or {}
+            self._input_fields_cache[type_name] = {
+                f["name"] for f in type_info.get("inputFields") or []
+            }
+        return self._input_fields_cache[type_name]
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 

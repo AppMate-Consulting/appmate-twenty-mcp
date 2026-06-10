@@ -252,6 +252,40 @@ Opportunity stage is a SELECT **field** on the opportunity object, not a standal
 
 ---
 
+## 14. Workspace-Customized Activity Targets — `companyId` May Not Exist
+
+### Symptom
+
+`GraphQL error: Object noteTarget doesn't have any "companyId" field.` when linking a note/task to a company, even though that's standard Twenty.
+
+### Root Cause
+
+Note/task target relations are per-workspace data model. Workspaces can deactivate the standard company/person/opportunity relations and add custom-object relations instead. The AppMate workspace, for example, exposes only `targetAuditId`, `targetCompanyGroupId`, `targetInterventionId`, `targetProjectId` on both `NoteTargetCreateInput` and `TaskTargetCreateInput` — no `companyId`/`personId` at all.
+
+### Fix
+
+`create_note`/`create_task` introspect the create-input type at call time (cached on the client): unsupported targets are skipped and reported in a `warnings` list instead of failing the create. `list_notes`/`list_tasks` build their target sub-selection from the actual object fields. `get_note_target_fields`/`get_task_target_fields` expose discovery, and `extra_targets` lets callers attach to workspace-specific objects.
+
+To restore company/person attachment, re-enable those relations in Settings → Data Model (manual UI — see quirk #8 on programmatic relation creation).
+
+---
+
+## 15. Cloudflare Access — Service Token Required
+
+### Symptom
+
+Every request 302s to `https://<team>.cloudflareaccess.com/cdn-cgi/access/login/...` (HTML), surfacing in Python as `JSONDecodeError: Expecting value` if redirects aren't checked. Distinct from quirk #1 (bot detection 403): this is an Access application gating the whole hostname.
+
+### Root Cause
+
+Self-hosted instances behind a Cloudflare Access application require an Access service token **in addition to** the Twenty API key — two independent auth layers.
+
+### Fix
+
+Set `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`; the client sends them as `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers on every request. Tokens are minted in Cloudflare Zero Trust → Access → Service Auth → Service Tokens, and must be allowed by the Access application's policy. The client also detects Access login redirects and raises a clear `TwentyError` instead of choking on HTML.
+
+---
+
 ## Summary Table: Why Not the Community Server?
 
 | Quirk | `jezweb/twenty-mcp` | `appmate-twenty-mcp` |

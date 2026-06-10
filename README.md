@@ -34,6 +34,10 @@ uv sync
 ```bash
 export TWENTY_API_KEY="your-jwt-api-key"
 export TWENTY_BASE_URL="https://crm.yourdomain.com"   # omit for Twenty Cloud
+
+# Required if the instance is behind a Cloudflare Access application (QUIRKS #15):
+export CF_ACCESS_CLIENT_ID="...access-service-token-id..."
+export CF_ACCESS_CLIENT_SECRET="...access-service-token-secret..."
 ```
 
 ### Run the Server
@@ -89,11 +93,13 @@ Restart Hermes. The bridge will be available as a native MCP toolset.
 - `list_pipeline_stages` — discover available stage values (enum introspection; stage is a SELECT field, not an object)
 
 ### Notes
-- `create_note` — markdown note, optionally attached to company/person/opportunity via noteTargets
-- `list_notes` — recent notes, filter by linked company or person
+- `create_note` — markdown note, attached to records via noteTargets (workspace-aware; unsupported targets become warnings)
+- `list_notes` — recent notes, filter by any target field
+- `get_note_target_fields` — discover what notes can attach to in this workspace
 
 ### Workspace
 - `list_workspace_members` — id/name/email; use the id as `assignee_id` when creating tasks
+- `get_task_target_fields` — discover what tasks can attach to in this workspace
 
 ## Architecture
 
