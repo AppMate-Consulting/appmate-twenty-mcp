@@ -79,7 +79,7 @@ def register_task_tools(mcp: FastMCP, client: TwentyClient) -> None:
 
         filter_str = f", filter: {{ {', '.join(filters)} }}" if filters else ""
         query = f"""
-        query ListTasks({', '.join(f'${k}: String' for k in filter_args.keys())}) {{
+        query ListTasks({', '.join(f'${k}: String' for k in filter_args)}) {{
           tasks(first: {limit}{filter_str}) {{
             edges {{
               node {{

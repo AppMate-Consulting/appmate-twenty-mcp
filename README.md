@@ -86,7 +86,14 @@ Restart Hermes. The bridge will be available as a native MCP toolset.
 ### Opportunities
 - `search_opportunities` — by stage, company, amount range
 - `create_opportunity` / `update_opportunity`
-- `list_pipeline_stages` — discover available stages
+- `list_pipeline_stages` — discover available stage values (enum introspection; stage is a SELECT field, not an object)
+
+### Notes
+- `create_note` — markdown note, optionally attached to company/person/opportunity via noteTargets
+- `list_notes` — recent notes, filter by linked company or person
+
+### Workspace
+- `list_workspace_members` — id/name/email; use the id as `assignee_id` when creating tasks
 
 ## Architecture
 

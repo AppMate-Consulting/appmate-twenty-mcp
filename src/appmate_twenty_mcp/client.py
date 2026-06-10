@@ -36,8 +36,10 @@ class TwentyClient:
         api_key: str | None = None,
         base_url: str | None = None,
     ) -> None:
-        self.api_key = api_key or os.environ["TWENTY_API_KEY"]
-        self.base_url = (base_url or os.environ.get("TWENTY_BASE_URL", "https://api.twenty.com")).rstrip("/")
+        # Strip whitespace defensively — a trailing newline in the env var (e.g. from a
+        # multi-line shell export) becomes an illegal HTTP header value in httpx.
+        self.api_key = (api_key or os.environ["TWENTY_API_KEY"]).strip()
+        self.base_url = (base_url or os.environ.get("TWENTY_BASE_URL", "https://api.twenty.com")).strip().rstrip("/")
 
         # Extract workspace ID from JWT payload
         self.workspace_id = self._extract_workspace_id(self.api_key)

@@ -220,6 +220,38 @@ Twenty returns ISO8601 dates (`2026-04-23T00:00:00.000Z`) while most local store
 
 ---
 
+## 12. Whitespace in `TWENTY_API_KEY` → Illegal Header Value
+
+### Symptom
+
+`httpx.LocalProtocolError: Illegal header value b'Bearer eyJ...\n'` before any request reaches the server.
+
+### Root Cause
+
+A multi-line shell export (closing quote on the next line) or a trailing newline from `echo`-style key provisioning embeds `\n` in the env var. HTTP header values cannot contain newlines, so httpx refuses to send the request.
+
+### Fix
+
+`client.py` strips whitespace from `TWENTY_API_KEY` and `TWENTY_BASE_URL` on init. Still worth fixing the source export — other consumers of the same env var (curl, Rails, agents) will hit the same wall.
+
+---
+
+## 13. `pipelineStages` Query Does Not Exist
+
+### Symptom
+
+`GraphQL error: Cannot query field "pipelineStages"` (or empty results) when listing stages.
+
+### Root Cause
+
+Opportunity stage is a SELECT **field** on the opportunity object, not a standalone object. The `pipelineStages` top-level query never existed in Twenty v2 — same class of bug as the singular `company(id:)` query (fixed in `633d8f7`).
+
+### Fix
+
+`list_pipeline_stages` introspects the `OpportunityStageEnum` GraphQL enum, with a metadata-API fallback (`/rest/metadata/objects` → opportunity → `stage` field options) for versions where the enum type is named differently.
+
+---
+
 ## Summary Table: Why Not the Community Server?
 
 | Quirk | `jezweb/twenty-mcp` | `appmate-twenty-mcp` |

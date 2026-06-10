@@ -53,7 +53,7 @@ def register_opportunity_tools(mcp: FastMCP, client: TwentyClient) -> None:
 
         filter_str = ", ".join(filters) if filters else ""
         query = f"""
-        query SearchOpportunities({', '.join(f'${k}: String' for k in filter_args.keys())}) {{
+        query SearchOpportunities({', '.join(f'${k}: String' for k in filter_args)}) {{
           opportunities(first: {limit}{f', filter: {{ {filter_str} }}' if filter_str else ''}) {{
             edges {{
               node {{
@@ -166,14 +166,43 @@ def register_opportunity_tools(mcp: FastMCP, client: TwentyClient) -> None:
 
     @mcp.tool()
     def list_pipeline_stages() -> list[str]:
-        """Return the available pipeline stages for opportunities."""
+        """Return the available pipeline stage values for opportunities.
+
+        Stage is a SELECT field on opportunity, not a standalone object — there is
+        no `pipelineStages` query in Twenty v2. Discover the values via GraphQL
+        enum introspection, falling back to the metadata API for older/renamed
+        enum types.
+        """
+        # Primary: introspect the stage SELECT enum
         query = """
-        query {
-          pipelineStages(first: 100) {
-            edges { node { name } }
+        query StageEnum {
+          __type(name: "OpportunityStageEnum") {
+            enumValues { name }
           }
         }
         """
-        data = client.graphql(query)
-        edges = data.get("pipelineStages", {}).get("edges", [])
-        return [e["node"]["name"] for e in edges]
+        try:
+            data = client.graphql(query)
+            type_info = data.get("__type")
+            if type_info and type_info.get("enumValues"):
+                return [v["name"] for v in type_info["enumValues"]]
+        except Exception:
+            pass
+
+        # Fallback: metadata API — find the opportunity object's stage field options.
+        # Response shape varies across Twenty versions; normalize the common ones.
+        meta = client.rest_get("/rest/metadata/objects")
+        raw = meta.get("data", meta)
+        if isinstance(raw, dict):
+            raw = raw.get("objects", raw.get("edges", []))
+        objects = [o.get("node", o) for o in raw] if isinstance(raw, list) else []
+        for obj in objects:
+            if obj.get("nameSingular") != "opportunity":
+                continue
+            fields = obj.get("fields") or obj.get("fieldsList") or []
+            fields = [f.get("node", f) for f in fields]
+            for field in fields:
+                if field.get("name") == "stage":
+                    options = field.get("options") or []
+                    return [opt.get("value") for opt in options if opt.get("value")]
+        return []

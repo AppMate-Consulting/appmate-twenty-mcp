@@ -43,7 +43,7 @@ def register_company_tools(mcp: FastMCP, client: TwentyClient) -> None:
 
         filter_str = ", ".join(filters) if filters else ""
         query = f"""
-        query SearchCompanies({', '.join(f'${k}: String' for k in filter_args.keys())}) {{
+        query SearchCompanies({', '.join(f'${k}: String' for k in filter_args)}) {{
           companies(first: {limit}{f', filter: {{ {filter_str} }}' if filter_str else ''}) {{
             edges {{
               node {{

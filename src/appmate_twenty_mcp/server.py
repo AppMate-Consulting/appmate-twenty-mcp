@@ -12,7 +12,6 @@ Environment:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys
@@ -21,9 +20,11 @@ from mcp.server.fastmcp import FastMCP
 
 from appmate_twenty_mcp.client import TwentyClient
 from appmate_twenty_mcp.tools.companies import register_company_tools
+from appmate_twenty_mcp.tools.notes import register_note_tools
+from appmate_twenty_mcp.tools.opportunities import register_opportunity_tools
 from appmate_twenty_mcp.tools.people import register_people_tools
 from appmate_twenty_mcp.tools.tasks import register_task_tools
-from appmate_twenty_mcp.tools.opportunities import register_opportunity_tools
+from appmate_twenty_mcp.tools.workspace import register_workspace_tools
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,8 +52,12 @@ def create_server() -> FastMCP:
     register_people_tools(mcp, client)
     register_task_tools(mcp, client)
     register_opportunity_tools(mcp, client)
+    register_note_tools(mcp, client)
+    register_workspace_tools(mcp, client)
 
-    logger.info("Bridge ready with tools: companies, people, tasks, opportunities")
+    logger.info(
+        "Bridge ready with tools: companies, people, tasks, opportunities, notes, workspace"
+    )
     return mcp
 
 
